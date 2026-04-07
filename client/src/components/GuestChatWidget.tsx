@@ -9,13 +9,37 @@ interface ChatMessage {
 }
 
 const MAX_GUEST_MESSAGES = 5;
+const STORAGE_KEY_COUNT = 'guest_chat_count';
+const STORAGE_KEY_MESSAGES = 'guest_chat_messages';
+const STORAGE_KEY_DATE = 'guest_chat_date';
+
+function getTodayKey() {
+  return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+}
+
+function loadPersistedCount(): number {
+  try {
+    const date = localStorage.getItem(STORAGE_KEY_DATE);
+    if (date !== getTodayKey()) return 0; // reset on new day
+    return parseInt(localStorage.getItem(STORAGE_KEY_COUNT) || '0', 10);
+  } catch { return 0; }
+}
+
+function loadPersistedMessages(): ChatMessage[] {
+  try {
+    const date = localStorage.getItem(STORAGE_KEY_DATE);
+    if (date !== getTodayKey()) return [];
+    const raw = localStorage.getItem(STORAGE_KEY_MESSAGES);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
 
 const GuestChatWidget: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadPersistedMessages());
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [userMessageCount, setUserMessageCount] = useState(0);
+  const [userMessageCount, setUserMessageCount] = useState<number>(() => loadPersistedCount());
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [hasShownBadge, setHasShownBadge] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -25,14 +49,42 @@ const GuestChatWidget: React.FC = () => {
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
+  // Persist messages to localStorage whenever they change
+  useEffect(() => {
+    try {
+      const today = getTodayKey();
+      localStorage.setItem(STORAGE_KEY_DATE, today);
+      // Only persist non-welcome messages
+      const toSave = messages.filter(m => m.id !== 'welcome');
+      if (toSave.length > 0) {
+        localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(toSave));
+      }
+    } catch { /* ignore quota errors */ }
+  }, [messages]);
+
+  // Persist message count to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_DATE, getTodayKey());
+      localStorage.setItem(STORAGE_KEY_COUNT, String(userMessageCount));
+    } catch { /* ignore */ }
+  }, [userMessageCount]);
+
   // Welcome greeting + auto-open after 3 seconds
   useEffect(() => {
+    const persistedMessages = loadPersistedMessages();
+    const hasHistory = persistedMessages.length > 0;
+
     const welcomeTimer = setTimeout(() => {
-      setMessages([{
-        role: 'assistant',
-        content: "Hi Mama! 👋 I'm Dr. Pedia, your free online pediatric health guide. Got a question about your little one? I'm here to help! You can ask me up to 5 questions — no sign-in needed. 🩺💕",
-        id: 'welcome',
-      }]);
+      setMessages((prev) => {
+        // If there's already a welcome message or conversation history, don't re-add welcome
+        if (prev.some(m => m.id === 'welcome') || hasHistory) return prev;
+        return [{
+          role: 'assistant',
+          content: "Hi Mama! 👋 I'm Dr. Pedia, your free online pediatric health guide. Got a question about your little one? I'm here to help! You can ask me up to 5 questions — no sign-in needed. 🩺💕",
+          id: 'welcome',
+        }, ...prev];
+      });
       setHasShownBadge(true);
     }, 2500);
 
@@ -40,6 +92,11 @@ const GuestChatWidget: React.FC = () => {
     const openTimer = setTimeout(() => {
       setIsOpen(true);
     }, 3000);
+
+    // Show badge if there's prior activity
+    if (hasHistory || loadPersistedCount() > 0) {
+      setHasShownBadge(true);
+    }
 
     return () => {
       clearTimeout(welcomeTimer);
