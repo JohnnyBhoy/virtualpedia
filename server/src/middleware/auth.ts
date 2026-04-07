@@ -1,9 +1,9 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request as ExpressRequest, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User';
 import Admin from '../models/Admin';
 
-export interface AuthRequest extends Request {
+export interface AuthRequest extends ExpressRequest {
   currentUser?: any;
 }
 
