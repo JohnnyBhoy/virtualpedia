@@ -1,519 +1,566 @@
-You are a senior MERN stack developer. Build me a complete full-stack web application called "VirtualPedia" — a pediatric clinic booking and child health platform. Follow every step below completely without skipping anything.
+You are a senior full-stack TypeScript developer. Your job is to build
+"VirtualPedia" from scratch — a web app where mothers log in with Google
+and chat in realtime with an AI Pediatrician called "Dr. Pedia" powered
+by OpenAI streaming API. There is also an Admin dashboard to manage users.
+
+Read this entire file before writing a single line of code.
+Follow every instruction in order. Do not skip any step.
+
+---
+
+## OVERVIEW
+
+VirtualPedia has two account types:
+
+1. Parent Account
+   - Signs in with Google only (no manual registration)
+   - Lands on a beautiful landing page
+   - After login, goes directly to the AI chat with Dr. Pedia
+   - Can view and clear their own chat history
+   - Can update their profile (name, avatar)
+
+2. Admin Account
+   - Logs in with email and password (no Google)
+   - Has a full dashboard to manage the app
+   - Can view all registered parents and their details
+   - Can activate or deactivate parent accounts
+   - Can view total stats: users, chats, messages
+   - Can view any parent's chat history (read-only)
+   - Cannot chat with Dr. Pedia
 
 ---
 
 ## TECH STACK
 
-- Frontend: React (Vite), React Router v6, Axios, TailwindCSS
-- Backend: Node.js, Express.js
+- Frontend: React 18, TypeScript, Vite, TailwindCSS, React Router v6
+- Backend: Node.js, Express.js, TypeScript
 - Database: MongoDB with Mongoose
-- Auth: JWT, bcryptjs, Google OAuth (passport-google-oauth20)
-- File Upload: Multer
-- Email: Nodemailer
-- Others: dotenv, cors, morgan, express-validator
+- Auth: Google OAuth 2.0 (parents) + JWT email/password (admin)
+- AI: OpenAI API using gpt-4o with token streaming
+- Realtime: Server-Sent Events (SSE) for streaming AI responses
+- Forms: React Hook Form + Zod validation
+- Notifications: React Toastify
+- HTTP: Axios with interceptors
 
 ---
 
-## STEP 1 — PROJECT SETUP
+## PROJECT STRUCTURE
 
-Create the following folder structure:
+Create this exact folder layout before writing any code:
+
+```
 virtualpedia/
-├── client/ # React frontend
-└── server/ # Node/Express backend
-
-### Backend Setup
-
-1. Inside /server run: npm init -y
-2. Install: express mongoose dotenv cors bcryptjs jsonwebtoken passport passport-google-oauth20 passport-jwt multer nodemailer express-validator morgan
-3. Install dev deps: nodemon
-
-### Frontend Setup
-
-1. Inside /client run: npm create vite@latest . -- --template react
-2. Install: axios react-router-dom react-hook-form @hookform/resolvers yup tailwindcss postcss autoprefixer react-toastify react-icons date-fns
-3. Init Tailwind
+├── client/                  # React TypeScript frontend
+│   └── src/
+│       ├── api/             # All API call functions
+│       ├── components/
+│       │   ├── common/      # Navbar, Loader, ProtectedRoute
+│       │   ├── chat/        # Chat UI components
+│       │   └── admin/       # Admin dashboard components
+│       ├── context/         # AuthContext
+│       ├── hooks/           # Custom hooks
+│       ├── pages/
+│       │   ├── LandingPage
+│       │   ├── OAuthSuccess
+│       │   ├── ChatPage
+│       │   └── admin/       # All admin pages
+│       ├── types/           # TypeScript interfaces
+│       └── utils/           # Helper functions
+│
+└── server/                  # Node Express TypeScript backend
+    └── src/
+        ├── config/          # DB, Passport, OpenAI config
+        ├── controllers/     # Auth, Chat, Admin controllers
+        ├── middleware/      # JWT auth, role guard, error handler
+        ├── models/          # User, ChatHistory, Admin models
+        ├── routes/          # Auth, Chat, Admin routes
+        ├── types/           # Server TypeScript types
+        └── utils/           # OpenAI helper, email (optional)
+```
 
 ---
 
-## STEP 2 — ENVIRONMENT VARIABLES
+## ENVIRONMENT VARIABLES
 
-Create /server/.env with:
+### /server/.env
+
+```
 PORT=5000
 MONGO_URI=mongodb://localhost:27017/virtualpedia
-JWT_SECRET=your_jwt_secret_key
+JWT_SECRET=replace_with_long_random_secret
 JWT_EXPIRES_IN=7d
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_CLIENT_ID=from_google_cloud_console
+GOOGLE_CLIENT_SECRET=from_google_cloud_console
 GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
 CLIENT_URL=http://localhost:5173
-EMAIL_USER=your_email@gmail.com
-EMAIL_PASS=your_email_app_password
+OPENAI_API_KEY=your_openai_api_key
 NODE_ENV=development
+ADMIN_SEED_EMAIL=admin@virtualpedia.com
+ADMIN_SEED_PASSWORD=Admin@1234
+```
+
+### /client/.env
+
+```
+VITE_API_URL=http://localhost:5000/api
+VITE_SERVER_URL=http://localhost:5000
+```
 
 ---
 
-## STEP 3 — BACKEND: SERVER ENTRY POINT
+## DATABASE MODELS
 
-Create /server/server.js:
+### User (Parents only)
 
-- Initialize express app
-- Connect to MongoDB using mongoose
-- Use cors (allow http://localhost:5173)
-- Use express.json()
-- Use morgan for logging
-- Mount routes:
-  - /api/auth
-  - /api/admin
-  - /api/pediatrician
-  - /api/customer
-  - /api/appointments
-- Start server on PORT from .env
+- googleId — String, required, unique
+- name — String, required
+- email — String, required, unique
+- avatar — String (from Google)
+- isActive — Boolean, default true
+- createdAt — Date
 
----
+### Admin
 
-## STEP 4 — BACKEND: DATABASE CONNECTION
+- name — String, required
+- email — String, required, unique
+- password — String, hashed with bcryptjs, required
+- role — String, fixed value "admin"
+- createdAt — Date
+- Pre-save hook: hash password if modified
+- Method: comparePassword(candidate)
 
-Create /server/config/db.js:
+### ChatHistory (one per parent user)
 
-- Export async function connectDB()
-- mongoose.connect(process.env.MONGO_URI)
-- Log success or error
-
----
-
-## STEP 5 — BACKEND: MODELS
-
-### User Model (/server/models/User.js)
-
-Fields:
-
-- name: String, required
-- email: String, required, unique
-- password: String (not required for Google OAuth)
-- googleId: String
-- role: String enum ['admin', 'customer', 'pediatrician'], default 'customer'
-- profilePhoto: String
-- isActive: Boolean, default true
-- createdAt: Date, default Date.now
-
-Pre-save hook: hash password with bcryptjs if modified
-Method: comparePassword(candidatePassword)
-
-### PediatricianProfile Model (/server/models/PediatricianProfile.js)
-
-Fields:
-
-- userId: ObjectId ref User, required, unique
-- licenseNumber: String, required
-- specialization: String, required
-- clinicName: String, required
-- clinicAddress: String, required
-- contactNumber: String
-- bio: String
-- profilePhoto: String
-- isVerified: Boolean, default false
-- rating: Number, default 0
-- totalReviews: Number, default 0
-- createdAt: Date, default Date.now
-
-### Schedule Model (/server/models/Schedule.js)
-
-Fields:
-
-- pediatricianId: ObjectId ref User, required
-- date: Date, required
-- startTime: String, required (e.g. "09:00")
-- endTime: String, required
-- slotDurationMinutes: Number, default 30
-- maxPatients: Number, default 10
-- isAvailable: Boolean, default true
-- createdAt: Date, default Date.now
-
-### Appointment Model (/server/models/Appointment.js)
-
-Fields:
-
-- customerId: ObjectId ref User, required
-- pediatricianId: ObjectId ref User, required
-- scheduleId: ObjectId ref Schedule, required
-- childName: String, required
-- childAge: Number, required
-- childGender: String enum ['male', 'female']
-- concern: String, required
-- appointmentDate: Date, required
-- timeSlot: String, required
-- status: String enum ['pending', 'approved', 'rejected', 'completed', 'cancelled'], default 'pending'
-- notes: String
-- createdAt: Date, default Date.now
-
-### Review Model (/server/models/Review.js)
-
-Fields:
-
-- customerId: ObjectId ref User, required
-- pediatricianId: ObjectId ref User, required
-- appointmentId: ObjectId ref Appointment, required
-- rating: Number min 1 max 5, required
-- comment: String
-- createdAt: Date, default Date.now
+- userId — ref to User, unique
+- messages — array of:
+  - role: "user" or "assistant"
+  - content: String
+  - timestamp: Date
+- timestamps: true (createdAt, updatedAt)
 
 ---
 
-## STEP 6 — BACKEND: MIDDLEWARE
+## BACKEND INSTRUCTIONS
 
-### Auth Middleware (/server/middleware/auth.js)
+### Server Entry Point
 
-- verifyToken: checks Authorization header, verifies JWT, attaches user to req
-- requireRole(...roles): checks req.user.role is in allowed roles
+- Load env vars with dotenv
+- Connect MongoDB
+- Initialize passport
+- Apply CORS for CLIENT_URL
+- Parse JSON body
+- Use morgan for dev logging
+- Mount all routes under /api
+- Serve a health check at GET /api/health
+- Global error handler as last middleware
 
-### Error Middleware (/server/middleware/error.js)
+### Auth Routes — /api/auth
 
-- Global error handler
-- Returns { success: false, message } with appropriate status code
+GET /api/auth/google
 
-### Upload Middleware (/server/middleware/upload.js)
+- Redirect to Google OAuth with scope: profile, email
+- Session: false
 
-- Configure multer for profile photo uploads
-- Store in /server/uploads/profiles/
-- Accept only images
-- Max size 5MB
+GET /api/auth/google/callback
 
----
+- On success: sign a JWT, redirect to CLIENT_URL/oauth-success?token=JWT
+- On fail: redirect to CLIENT_URL?error=auth_failed
 
-## STEP 7 — BACKEND: AUTH ROUTES & CONTROLLERS
+POST /api/auth/admin/login
 
-Create /server/routes/auth.js and /server/controllers/authController.js
+- Body: email, password
+- Find admin by email
+- Compare password with bcrypt
+- Return JWT + admin object { id, name, email, role }
+- Return 401 if credentials are wrong
 
-### Endpoints:
+GET /api/auth/me
 
-**POST /api/auth/register**
+- Protected: verifyToken
+- Return the current logged-in user or admin
 
-- Validate: name, email, password (min 6 chars), role (customer or pediatrician)
-- Check if email exists
-- Create user
-- If role is pediatrician, create empty PediatricianProfile
-- Return JWT token + user object
+POST /api/auth/logout
 
-**POST /api/auth/login**
+- Protected: verifyToken
+- Return success message
 
-- Validate: email, password
-- Find user by email
-- Compare password
-- Return JWT token + user object
+### Chat Routes — /api/chat
 
-**GET /api/auth/google**
+All routes: verifyToken + requireRole("parent")
 
-- Passport Google OAuth redirect
+POST /api/chat/message
 
-**GET /api/auth/google/callback**
+- Body: { message: string }
+- Find or create ChatHistory for this user
+- Append user message to history
+- Build last 20 messages as context for OpenAI
+- Call OpenAI gpt-4o with streaming enabled
+- Use Server-Sent Events (SSE) to stream tokens back to client:
+  - Set headers: Content-Type: text/event-stream, Cache-Control: no-cache
+  - Send each token chunk as: data: {"content":"...","done":false}
+  - When done send: data: {"content":"","done":true}
+- After stream ends, save complete assistant message to ChatHistory
+- Handle client disconnect gracefully
 
-- Handle Google callback
-- Create user if doesn't exist (role defaults to customer)
-- Redirect to frontend with token: http://localhost:5173/oauth-success?token=JWT
+GET /api/chat/history
 
-**GET /api/auth/me**
+- Return all messages in this user's ChatHistory
+- Return empty array if no history yet
 
-- Protected route (verifyToken)
-- Return current user data
+DELETE /api/chat/history
 
----
+- Delete all messages in this user's ChatHistory
+- Return success message
 
-## STEP 8 — BACKEND: ADMIN ROUTES & CONTROLLERS
+### Admin Routes — /api/admin
 
-Create /server/routes/admin.js and /server/controllers/adminController.js
-All routes protected with verifyToken + requireRole('admin')
+All routes: verifyToken + requireRole("admin")
 
-### Endpoints:
+GET /api/admin/stats
 
-**GET /api/admin/users** — get all users with pagination
-**GET /api/admin/users/:id** — get single user
-**PUT /api/admin/users/:id/status** — activate/deactivate user
-**DELETE /api/admin/users/:id** — delete user
+- Return: { totalUsers, activeUsers, inactiveUsers, totalChats, totalMessages }
 
-**GET /api/admin/pediatricians** — get all pediatricians (verified and unverified)
-**PUT /api/admin/pediatricians/:id/verify** — verify or unverify a pediatrician account
-**GET /api/admin/appointments** — get all appointments with filters (status, date)
-**GET /api/admin/stats** — return counts: total users, total pediatricians, total appointments, pending appointments
+GET /api/admin/users
 
----
+- Return all parent users with pagination
+- Query params: page (default 1), limit (default 10), search (by name or email)
+- Return: { users, total, page, totalPages }
 
-## STEP 9 — BACKEND: PEDIATRICIAN ROUTES & CONTROLLERS
+GET /api/admin/users/:id
 
-Create /server/routes/pediatrician.js and /server/controllers/pediatricianController.js
-All routes protected with verifyToken + requireRole('pediatrician')
+- Return single user details
 
-### Endpoints:
+PUT /api/admin/users/:id/status
 
-**GET /api/pediatrician/profile** — get own profile
-**PUT /api/pediatrician/profile** — update profile (licenseNumber, specialization, clinicName, clinicAddress, contactNumber, bio)
-**POST /api/pediatrician/profile/photo** — upload profile photo (multer)
+- Body: { isActive: boolean }
+- Toggle user active/inactive
+- Return updated user
 
-**GET /api/pediatrician/schedules** — get own schedules
-**POST /api/pediatrician/schedules** — create schedule (date, startTime, endTime, slotDurationMinutes, maxPatients)
-**PUT /api/pediatrician/schedules/:id** — update schedule
-**DELETE /api/pediatrician/schedules/:id** — delete schedule
+GET /api/admin/users/:id/chat
 
-**GET /api/pediatrician/appointments** — get all appointments for this pediatrician
-**PUT /api/pediatrician/appointments/:id/status** — approve, reject, complete appointment
+- Return full chat history of a specific parent user (read-only)
 
----
+### Middleware
 
-## STEP 10 — BACKEND: CUSTOMER ROUTES & CONTROLLERS
+verifyToken
 
-Create /server/routes/customer.js and /server/controllers/customerController.js
-All routes protected with verifyToken + requireRole('customer')
+- Read Authorization: Bearer <token> header
+- Verify JWT, get decoded { id, role }
+- If role is "admin": find in Admin collection
+- If role is "parent": find in User collection
+- Attach user to req.user
+- Return 401 if invalid or missing
 
-### Endpoints:
+requireRole(...roles)
 
-**GET /api/customer/pediatricians** — list all verified pediatricians (public info + rating)
-**GET /api/customer/pediatricians/:id** — get single pediatrician profile + schedules
-**GET /api/customer/pediatricians/:id/schedules** — get available schedules for a pediatrician
+- Check req.user.role is in the allowed roles array
+- Return 403 if not allowed
 
-**GET /api/customer/appointments** — get own appointment history
-**POST /api/customer/appointments** — book appointment (pediatricianId, scheduleId, childName, childAge, childGender, concern, appointmentDate, timeSlot)
-**PUT /api/customer/appointments/:id/cancel** — cancel own appointment
+errorHandler
 
-**POST /api/customer/reviews** — submit review after completed appointment
-**GET /api/customer/profile** — get own profile
-**PUT /api/customer/profile** — update own profile
+- Global error middleware
+- Return { success: false, message } with proper status code
 
----
+### Admin Seeder
 
-## STEP 11 — BACKEND: EMAIL NOTIFICATIONS
+Create /server/src/seeders/adminSeeder.ts
 
-Create /server/utils/emailService.js
+- Check if admin already exists by email from .env
+- If not, create admin with hashed password
+- Log success or skip message
+- Add a seed script to package.json: "seed": "ts-node src/seeders/adminSeeder.ts"
 
-- Configure nodemailer with Gmail
-- Create functions:
-  - sendBookingConfirmation(customerEmail, appointmentDetails)
-  - sendAppointmentStatusUpdate(customerEmail, status, appointmentDetails)
-  - sendWelcomeEmail(email, name)
-- Call these in the appropriate controllers
+### OpenAI Config
 
----
+- Initialize OpenAI client with OPENAI_API_KEY
+- Model: gpt-4o
+- Streaming: true
+- Max tokens: 1024
 
-## STEP 12 — FRONTEND: FOLDER STRUCTURE
+### Dr. Pedia System Prompt
 
-Organize /client/src as:
-src/
-├── api/ # axios instance + api calls
-├── components/
-│ ├── common/ # Navbar, Footer, Loader, ProtectedRoute
-│ ├── admin/
-│ ├── pediatrician/
-│ └── customer/
-├── context/
-│ └── AuthContext.jsx
-├── hooks/
-│ └── useAuth.js
-├── pages/
-│ ├── Home.jsx
-│ ├── Login.jsx
-│ ├── Register.jsx
-│ ├── OAuthSuccess.jsx
-│ ├── admin/
-│ │ ├── AdminDashboard.jsx
-│ │ ├── ManageUsers.jsx
-│ │ ├── ManagePediatricians.jsx
-│ │ └── ManageAppointments.jsx
-│ ├── pediatrician/
-│ │ ├── PedDashboard.jsx
-│ │ ├── PedProfile.jsx
-│ │ ├── PedSchedules.jsx
-│ │ └── PedAppointments.jsx
-│ └── customer/
-│ ├── CustomerDashboard.jsx
-│ ├── FindPediatrician.jsx
-│ ├── PediatricianDetail.jsx
-│ ├── BookAppointment.jsx
-│ └── MyAppointments.jsx
-├── utils/
-│ └── helpers.js
-├── App.jsx
-└── main.jsx
+Use this exact system prompt for every OpenAI call:
 
----
+"You are Dr. Pedia, a warm, caring, and knowledgeable AI Pediatrician
+assistant on the VirtualPedia platform. You help mothers and parents with
+questions about their children's health, development, nutrition, and
+wellbeing.
 
-## STEP 13 — FRONTEND: AXIOS INSTANCE & API
+Your personality:
 
-Create /client/src/api/axios.js:
+- Warm, empathetic, and reassuring like a trusted family doctor
+- Address parents kindly, e.g. Hi Mama! or Hi there!
+- Use simple clear language, avoid heavy medical jargon
+- Always acknowledge the parent's concern before giving advice
 
-- Base URL: http://localhost:5000/api
-- Request interceptor: attach JWT token from localStorage to Authorization header
-- Response interceptor: if 401, clear token and redirect to login
+Your expertise:
 
-Create /client/src/api/authApi.js — functions: register, login, getMe
-Create /client/src/api/adminApi.js — functions: getUsers, updateUserStatus, deleteUser, getPediatricians, verifyPediatrician, getAppointments, getStats
-Create /client/src/api/pediatricianApi.js — functions: getProfile, updateProfile, uploadPhoto, getSchedules, createSchedule, updateSchedule, deleteSchedule, getAppointments, updateAppointmentStatus
-Create /client/src/api/customerApi.js — functions: getPediatricians, getPediatricianById, getSchedules, getAppointments, bookAppointment, cancelAppointment, submitReview, getProfile, updateProfile
+- Common childhood illnesses: fever, cough, colds, rashes, ear infections
+- Vaccination schedules and their importance
+- Growth and developmental milestones by age
+- Newborn care: feeding, sleeping, diaper rash
+- Breastfeeding and formula feeding
+- Introducing solid foods and child nutrition
+- Sleep habits and sleep training
+- Child safety and accident prevention
+- When to go to the ER vs manage at home
+- Teething, toilet training, and common parenting concerns
+
+Critical rules:
+
+- Always end serious discussions with: Please consult your actual
+  pediatrician for proper diagnosis and treatment.
+- Never diagnose with 100% certainty
+- For life-threatening symptoms always say: Please go to the nearest
+  emergency room immediately.
+- On the very first message greet warmly: Hi Mama! I am Dr. Pedia,
+  your AI pediatrician. How can I help your little one today?
+- You are a support assistant, not a replacement for real medical care."
 
 ---
 
-## STEP 14 — FRONTEND: AUTH CONTEXT
+## FRONTEND INSTRUCTIONS
 
-Create /client/src/context/AuthContext.jsx:
+### Axios Instance
 
-- State: user, token, loading
-- On mount: read token from localStorage, call getMe to restore session
-- Functions: login(token, user), logout(), updateUser(user)
+- baseURL from VITE_API_URL
+- Request interceptor: read token from localStorage key vp_token,
+  attach as Authorization: Bearer <token>
+- Response interceptor: if 401, remove token, redirect to /
+
+### Auth Context
+
+- State: user (null), role (null), loading (true)
+- On mount: if token in localStorage, call GET /api/auth/me to restore session
+- login(token): save to localStorage vp_token, call getMe, set user + role
+- logout(): remove token, call POST /api/auth/logout, clear state, redirect to /
 - Export useAuth() hook
 
----
+### Routing (App.tsx)
 
-## STEP 15 — FRONTEND: APP.JSX ROUTING
+Public routes:
 
-Set up React Router v6 with these routes:
+- / — LandingPage
+- /oauth-success — OAuthSuccess
+- /admin/login — AdminLogin
 
-Public:
+Protected routes (parent only):
 
-- / → Home
-- /login → Login
-- /register → Register
-- /oauth-success → OAuthSuccess (reads token from URL, saves to localStorage)
+- /chat — ChatPage
 
-Protected (ProtectedRoute component that checks auth + role):
+Protected routes (admin only):
 
-- /admin/\* → AdminDashboard layout with nested:
-  - /admin → stats overview
-  - /admin/users → ManageUsers
-  - /admin/pediatricians → ManagePediatricians
-  - /admin/appointments → ManageAppointments
-- /pediatrician/\* → PedDashboard layout with nested:
-  - /pediatrician → overview
-  - /pediatrician/profile → PedProfile
-  - /pediatrician/schedules → PedSchedules
-  - /pediatrician/appointments → PedAppointments
-- /customer/\* → CustomerDashboard layout with nested:
-  - /customer → overview
-  - /customer/find → FindPediatrician
-  - /customer/pediatrician/:id → PediatricianDetail
-  - /customer/book/:id → BookAppointment
-  - /customer/appointments → MyAppointments
+- /admin — AdminDashboard
+- /admin/users — ManageUsers
+- /admin/users/:id — UserDetail
+
+ProtectedRoute component:
+
+- If loading: show full-page spinner
+- If no user: redirect to /
+- If wrong role: redirect to /
 
 ---
 
-## STEP 16 — FRONTEND: PAGES & COMPONENTS
+## PAGE INSTRUCTIONS
 
-Build all pages with TailwindCSS. Use clean, modern UI with a blue and white color scheme.
+### LandingPage
 
-### Home.jsx
+Design a beautiful, modern, medical-themed landing page.
 
-- Hero section: "Find the Best Pediatrician for Your Child"
-- CTA buttons: Get Started, Find a Doctor
-- Features section: icons explaining the app
-- How it works section (3 steps)
-- Navbar with Login / Register buttons
+Sections:
 
-### Login.jsx
+1. Navbar — Logo (stethoscope icon + VirtualPedia text), no login button
+2. Hero — Large headline: Your Child's Health, Just a Message Away
+   Subtext: Talk to Dr. Pedia — your AI pediatrician available 24/7
+   One button: Sign in with Google (styled with Google colors and icon)
+   Clicking this button navigates to: VITE_SERVER_URL/api/auth/google
+3. Features — 3 cards: Available 24/7, Expert AI Knowledge, Private and Secure
+4. How it Works — 3 steps: Sign in, Ask your question, Get caring advice
+5. Footer — VirtualPedia is not a substitute for professional medical care
 
-- Email + password form (react-hook-form + yup validation)
-- Google Sign In button (links to /api/auth/google)
-- Link to register
+Design rules:
 
-### Register.jsx
+- Color scheme: white background, blue accent (#2563EB)
+- Clean, soft shadows, rounded cards
+- Professional medical feel
+- Fully responsive for mobile
 
-- Name, email, password, confirm password fields
-- Role selection: Parent/Customer or Pediatrician
-- Google Sign Up button
-- Link to login
+### OAuthSuccess Page
 
-### OAuthSuccess.jsx
+- On mount: read ?token= from URL search params
+- If token found: call login(token) from AuthContext
+- Show a centered loading spinner while processing
+- After login completes: navigate to /chat
+- If no token: navigate to / and show error toast
 
-- On mount: get token from URL params, save to localStorage, call getMe, redirect by role
+### ChatPage (Main Feature)
 
-### AdminDashboard
+Layout (full viewport height, no scroll on outer):
 
-- Sidebar navigation
-- Stats cards (total users, pedia, appointments)
-- Tables for users with activate/deactivate/delete actions
-- Verify/unverify pediatrician toggle
-- Appointments list with filters
+- Top: fixed Navbar with logo, user avatar, and logout button
+- Below navbar: Dr. Pedia header card showing avatar, name, and Online status
+- Middle: scrollable messages area (flex-1, overflow-y-auto)
+- Bottom: fixed input bar with textarea and send button
 
-### PedDashboard
+Features:
 
-- Sidebar navigation
-- Profile form with all pedia fields + photo upload
-- Schedule manager: calendar or list view, add/edit/delete time slots
-- Appointments list: approve / reject / complete buttons, show patient info
+- On mount: call GET /api/chat/history to load previous messages
+- If no messages: show a centered welcome card with Dr. Pedia avatar
+  and text Ask me anything about your child's health
+- Use SSE (EventSource or fetch with ReadableStream) to receive
+  streaming tokens from POST /api/chat/message
+- Show each token appended in realtime to the current assistant bubble
+  as it arrives — do not wait for the full response
+- Show TypingIndicator (animated 3 dots) only before the first token arrives
+- Auto-scroll to bottom on every new token and new message
+- Disable input while streaming is in progress
+- Press Enter to send, Shift+Enter for new line
+- Clear chat button with a confirmation dialog before clearing
+- Show timestamps on each message bubble
+- User messages: right-aligned, blue bubble
+- Dr. Pedia messages: left-aligned, white card with soft shadow and
+  a small stethoscope icon
 
-### CustomerDashboard
+### AdminLogin Page
 
-- Sidebar navigation
-- Find Pediatrician page: search by name or specialization, cards with photo, rating, clinic
-- Pediatrician detail page: profile, schedule list
-- Book Appointment form: select schedule + time slot, fill child info and concern
-- My Appointments: list with status badges, cancel button, review button for completed
+- Email and password form
+- Validate with React Hook Form + Zod
+- On submit: POST /api/auth/admin/login
+- On success: login(token), navigate to /admin
+- Show error toast on wrong credentials
+- No Google sign in option on this page
+
+### AdminDashboard (layout with sidebar)
+
+Sidebar links: Dashboard, Users, Logout
+
+Dashboard page (/admin):
+
+- 4 stat cards: Total Parents, Active, Inactive, Total Messages
+- Recent users table showing last 5 registered parents
+- Each row: avatar, name, email, status badge, joined date
+
+ManageUsers page (/admin/users):
+
+- Search bar to filter by name or email
+- Table with columns: avatar, name, email, status, joined date, actions
+- Actions: View button, Toggle active/inactive button
+- Pagination controls
+- Status badge: green for active, red for inactive
+
+UserDetail page (/admin/users/:id):
+
+- Parent profile card: avatar, name, email, status, joined date
+- Toggle active/inactive button
+- Full chat history displayed below (read-only, same bubble style as ChatPage)
+- Back button to return to users list
 
 ---
 
-## STEP 17 — BACKEND: SEED ADMIN USER
+## UI & DESIGN RULES
 
-Create /server/seeders/adminSeeder.js:
+Apply these rules to every page and component:
 
-- Create one admin user: admin@virtualpedia.com / Admin@123
-- Role: admin
-- Run with: node seeders/adminSeeder.js
+- TailwindCSS only, no inline styles, no external CSS files
+- Fully responsive: mobile first, works on phones and desktop
+- Color palette: primary blue #2563EB, white backgrounds, gray-100 surfaces
+- Font: use Tailwind default sans, clean and readable
+- Every button must have a hover state and disabled state
+- Every form field must show validation errors inline
+- Every async action must show a loading state
+- Every error must show a toast notification via React Toastify
+- Smooth transitions on route changes and modal opens
+- All avatars use Google profile photo with a fallback initials circle
+- No page should ever show a blank white screen — always show a loader
 
 ---
 
-## STEP 18 — SCRIPTS
+## SCRIPTS & COMMANDS
 
-### /server/package.json scripts:
+### Server package.json scripts:
 
-```json
-"scripts": {
-  "start": "node server.js",
-  "dev": "nodemon server.js",
-  "seed": "node seeders/adminSeeder.js"
-}
+```
+dev:   nodemon --exec ts-node src/server.ts
+build: tsc
+start: node dist/server.js
+seed:  ts-node src/seeders/adminSeeder.ts
 ```
 
-### /client/package.json scripts (already from vite):
+### Client package.json scripts:
 
-```json
-"scripts": {
-  "dev": "vite",
-  "build": "vite build"
-}
+```
+dev:   vite
+build: vite build
+```
+
+### Commands to run after all files are created:
+
+```
+# Terminal 1 — seed admin then start backend
+cd server
+npm install
+npm run seed
+npm run dev
+
+# Terminal 2 — start frontend
+cd client
+npm install
+npm run dev
 ```
 
 ---
 
-## STEP 19 — README
+## README.md
 
-Create /README.md with:
+Create a README.md at the project root with:
 
-- Project description
-- Setup instructions (clone, install deps, configure .env, seed admin, run dev)
-- List all roles and credentials
-- API endpoints summary
+- Project description and purpose
+- Screenshot placeholder section
+- Prerequisites: Node 18+, MongoDB, Google OAuth credentials, OpenAI API key
+- Step by step setup instructions
+- How to get Google OAuth credentials (link: console.cloud.google.com)
+- How to get OpenAI API key (link: platform.openai.com)
+- All environment variables explained
+- Default admin credentials: admin@virtualpedia.com / Admin@1234
+- Available routes listed for both roles
+- Tech stack summary
 
 ---
 
-## FINAL INSTRUCTIONS FOR YOU (Claude Code):
+## FINAL CHECKLIST FOR CLAUDE CODE
 
-1. Create every single file listed above — do not skip any
-2. Every API function must have proper error handling with try/catch
-3. All protected routes must check JWT and role
-4. Frontend must show loading states and toast notifications (react-toastify) for all actions
-5. All forms must have validation
-6. Make sure CORS is properly configured
-7. Use consistent response format: { success: true/false, data: {}, message: "" }
-8. After creating all files, show me the commands to install all dependencies and run the project
+Before finishing, verify every item below is complete:
 
-How to use this in Claude Code (VS Code):
+- [ ] All folders and files created exactly as specified
+- [ ] TypeScript compiles with no errors on both client and server
+- [ ] Google OAuth flow works: login → redirect → token → /chat
+- [ ] Admin email/password login works and redirects to /admin
+- [ ] Admin seeder creates the admin user when npm run seed is run
+- [ ] OpenAI streaming works: tokens appear one by one in the chat bubble
+- [ ] SSE connection closes cleanly when client disconnects
+- [ ] Chat history is saved to MongoDB after each exchange
+- [ ] Admin can see all users and toggle their active status
+- [ ] Admin can read any parent's chat history
+- [ ] ProtectedRoute blocks wrong roles and redirects correctly
+- [ ] All forms have validation with inline error messages
+- [ ] All async actions have loading states
+- [ ] All errors show toast notifications
+- [ ] App is fully responsive on mobile and desktop
+- [ ] README.md is complete with all setup instructions
+- [ ] .env files are listed in .gitignore
+- [ ] No hardcoded secrets anywhere in the codebase
 
-Open VS Code
-Install the Claude Code extension if you haven't yet
-Open a new empty folder called virtualpedia
-Open Claude Code (Ctrl+Shift+P → Claude Code)
-Paste the entire prompt above
-Let it generate — it will create all files step by step
-Once done, run:
+```
 
-bash# Terminal 1 - Backend
-cd server && npm install && npm run seed && npm run dev
+---
 
-# Terminal 2 - Frontend
+**How to use this:**
 
-cd client && npm install && npm run dev
+1. Create an empty folder called `virtualpedia`
+2. Open it in VS Code
+3. Save the above as `CLAUDE.md` in the root
+4. Open Claude Code (`Ctrl+Shift+P` → Claude Code)
+5. Type: `Read CLAUDE.md and build the entire VirtualPedia app following every instruction`
+6. Let it run — it will build everything file by file
+```
