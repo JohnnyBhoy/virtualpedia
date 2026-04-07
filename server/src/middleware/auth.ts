@@ -1,11 +1,19 @@
-import { Request as ExpressRequest, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User';
 import Admin from '../models/Admin';
 
-export interface AuthRequest extends ExpressRequest {
-  currentUser?: any;
+// Augment Express globally — the idiomatic way to add properties to req
+declare global {
+  namespace Express {
+    interface Request {
+      currentUser?: any;
+    }
+  }
 }
+
+// AuthRequest is just Express Request — currentUser is on it via augmentation
+export type AuthRequest = Request;
 
 interface JwtPayload {
   id: string;
@@ -13,7 +21,7 @@ interface JwtPayload {
 }
 
 export const verifyToken = async (
-  req: AuthRequest,
+  req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
@@ -47,7 +55,7 @@ export const verifyToken = async (
 };
 
 export const requireRole = (...roles: string[]) => {
-  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+  return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.currentUser || !roles.includes(req.currentUser.role)) {
       res.status(403).json({ success: false, message: 'Access forbidden' });
       return;
