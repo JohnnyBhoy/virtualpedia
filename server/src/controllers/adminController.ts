@@ -8,16 +8,56 @@ export const getStats = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const totalUsers = await User.countDocuments();
-    const activeUsers = await User.countDocuments({ isActive: true });
-    const inactiveUsers = await User.countDocuments({ isActive: false });
-    const chats = await ChatHistory.find();
+    const now = new Date();
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const startOfThisWeek = new Date(startOfToday);
+    startOfThisWeek.setUTCDate(startOfToday.getUTCDate() - startOfToday.getUTCDay());
+    const startOfThisMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+    const [
+      totalUsers,
+      activeUsers,
+      inactiveUsers,
+      newUsersToday,
+      newUsersThisWeek,
+      newUsersThisMonth,
+      chats,
+    ] = await Promise.all([
+      User.countDocuments(),
+      User.countDocuments({ isActive: true }),
+      User.countDocuments({ isActive: false }),
+      User.countDocuments({ createdAt: { $gte: startOfToday } }),
+      User.countDocuments({ createdAt: { $gte: startOfThisWeek } }),
+      User.countDocuments({ createdAt: { $gte: startOfThisMonth } }),
+      ChatHistory.find({}, { messages: 1 }),
+    ]);
+
     const totalChats = chats.length;
     const totalMessages = chats.reduce((sum, c) => sum + c.messages.length, 0);
+    const avgMessagesPerUser = totalUsers > 0 ? Math.round(totalMessages / totalUsers) : 0;
+
+    // Messages sent today (by timestamp on messages)
+    let messagesToday = 0;
+    for (const chat of chats) {
+      messagesToday += chat.messages.filter(
+        (m) => new Date(m.timestamp) >= startOfToday && m.role === 'user'
+      ).length;
+    }
 
     res.json({
       success: true,
-      data: { totalUsers, activeUsers, inactiveUsers, totalChats, totalMessages },
+      data: {
+        totalUsers,
+        activeUsers,
+        inactiveUsers,
+        totalChats,
+        totalMessages,
+        newUsersToday,
+        newUsersThisWeek,
+        newUsersThisMonth,
+        messagesToday,
+        avgMessagesPerUser,
+      },
     });
   } catch (error) {
     next(error);

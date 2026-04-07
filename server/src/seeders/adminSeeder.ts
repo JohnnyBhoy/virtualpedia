@@ -9,8 +9,8 @@ const seed = async () => {
     await mongoose.connect(process.env.MONGO_URI as string);
     console.log('Connected to MongoDB');
 
-    const email = process.env.ADMIN_SEED_EMAIL || 'admin@virtualpedia.com';
-    const password = process.env.ADMIN_SEED_PASSWORD || 'Admin@1234';
+    const email = process.env.ADMIN_SEED_EMAIL;
+    const password = process.env.ADMIN_SEED_PASSWORD;
 
     const existing = await Admin.findOne({ email });
     if (existing) {

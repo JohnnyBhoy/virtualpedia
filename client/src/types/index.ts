@@ -28,4 +28,9 @@ export interface ChatStats {
   inactiveUsers: number;
   totalChats: number;
   totalMessages: number;
+  newUsersToday: number;
+  newUsersThisWeek: number;
+  newUsersThisMonth: number;
+  messagesToday: number;
+  avgMessagesPerUser: number;
 }
