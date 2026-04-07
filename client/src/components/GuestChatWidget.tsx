@@ -25,9 +25,9 @@ const GuestChatWidget: React.FC = () => {
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
-  // Welcome greeting
+  // Welcome greeting + auto-open after 3 seconds
   useEffect(() => {
-    const t = setTimeout(() => {
+    const welcomeTimer = setTimeout(() => {
       setMessages([{
         role: 'assistant',
         content: "Hi Mama! 👋 I'm Dr. Pedia, your free online pediatric health guide. Got a question about your little one? I'm here to help! You can ask me up to 5 questions — no sign-in needed. 🩺💕",
@@ -35,7 +35,16 @@ const GuestChatWidget: React.FC = () => {
       }]);
       setHasShownBadge(true);
     }, 2500);
-    return () => clearTimeout(t);
+
+    // Auto-open the chat window at 3 seconds
+    const openTimer = setTimeout(() => {
+      setIsOpen(true);
+    }, 3000);
+
+    return () => {
+      clearTimeout(welcomeTimer);
+      clearTimeout(openTimer);
+    };
   }, []);
 
   useEffect(() => {
