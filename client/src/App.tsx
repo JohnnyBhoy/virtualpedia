@@ -12,9 +12,11 @@ import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import ManageUsers from './pages/admin/ManageUsers';
 import UserDetail from './pages/admin/UserDetail';
+import { Analytics } from '@vercel/analytics/react';
 
 const App: React.FC = () => (
   <AuthProvider>
+    <Analytics />
     <BrowserRouter>
       <Routes>
         {/* Public */}
