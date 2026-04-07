@@ -10,6 +10,8 @@ import Loader from '../components/common/Loader';
 import { FaStethoscope, FaTrash, FaPaperPlane, FaMicrophone, FaStop } from 'react-icons/fa';
 import { useSpeechInput } from '../hooks/useSpeechInput';
 
+const DAILY_LIMIT = 20;
+
 const ChatPage: React.FC = () => {
   const { user, logout } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -18,6 +20,7 @@ const ChatPage: React.FC = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [showTyping, setShowTyping] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [dailyUsed, setDailyUsed] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -28,7 +31,10 @@ const ChatPage: React.FC = () => {
 
   useEffect(() => {
     getChatHistory()
-      .then(res => setMessages(res.data.data.messages || []))
+      .then(res => {
+        setMessages(res.data.data.messages || []);
+        setDailyUsed(res.data.data.dailyUsed ?? 0);
+      })
       .catch(() => toast.error('Failed to load chat history'))
       .finally(() => setLoading(false));
   }, []);
@@ -38,6 +44,11 @@ const ChatPage: React.FC = () => {
   const sendMessage = async () => {
     const trimmed = input.trim();
     if (!trimmed || isStreaming) return;
+
+    if (dailyUsed >= DAILY_LIMIT) {
+      toast.error(`You've reached your ${DAILY_LIMIT} daily messages. Resets at midnight! 💙`);
+      return;
+    }
 
     const userMsg: Message = {
       role: 'user',
@@ -68,6 +79,16 @@ const ChatPage: React.FC = () => {
         }
       );
 
+      // Handle daily limit reached (server-side check)
+      if (response.status === 429) {
+        const errData = await response.json();
+        setDailyUsed(DAILY_LIMIT);
+        toast.error(errData.message || `Daily limit of ${DAILY_LIMIT} messages reached. See you tomorrow!`);
+        // Remove the optimistic user message
+        setMessages(prev => prev.slice(0, -1));
+        return;
+      }
+
       if (!response.ok) throw new Error('Failed to send message');
 
       const reader = response.body!.getReader();
@@ -97,6 +118,7 @@ const ChatPage: React.FC = () => {
                   },
                 ]);
                 setStreamingContent('');
+                if (data.dailyUsed !== undefined) setDailyUsed(data.dailyUsed);
               } else if (data.content) {
                 accumulated += data.content;
                 setStreamingContent(accumulated);
@@ -182,14 +204,26 @@ const ChatPage: React.FC = () => {
               </div>
             </div>
           </div>
-          {messages.length > 0 && (
-            <button
-              onClick={handleClearChat}
-              className="flex items-center space-x-1 text-xs text-gray-400 hover:text-red-500 transition-colors border border-gray-200 hover:border-red-200 px-3 py-1.5 rounded-lg"
-            >
-              <FaTrash className="text-xs" /><span>Clear</span>
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {/* Daily usage pill */}
+            <div className={`text-xs font-medium px-3 py-1 rounded-full border ${
+              dailyUsed >= DAILY_LIMIT
+                ? 'bg-red-50 text-red-600 border-red-200'
+                : dailyUsed >= DAILY_LIMIT * 0.8
+                ? 'bg-amber-50 text-amber-600 border-amber-200'
+                : 'bg-green-50 text-green-600 border-green-200'
+            }`}>
+              💬 {dailyUsed}/{DAILY_LIMIT} today
+            </div>
+            {messages.length > 0 && (
+              <button
+                onClick={handleClearChat}
+                className="flex items-center space-x-1 text-xs text-gray-400 hover:text-red-500 transition-colors border border-gray-200 hover:border-red-200 px-3 py-1.5 rounded-lg"
+              >
+                <FaTrash className="text-xs" /><span>Clear</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -224,6 +258,15 @@ const ChatPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Daily limit reached banner */}
+      {dailyUsed >= DAILY_LIMIT && (
+        <div className="bg-amber-50 border-t border-amber-200 px-4 py-3 text-center flex-shrink-0">
+          <p className="text-sm text-amber-700 font-medium">
+            🌙 You've used all {DAILY_LIMIT} messages for today. Your limit resets at midnight. See you tomorrow, Mama! 💙
+          </p>
+        </div>
+      )}
+
       {/* Input */}
       <div className="bg-white border-t border-gray-200 flex-shrink-0">
         <div className="max-w-4xl mx-auto px-4 py-3">
@@ -234,8 +277,13 @@ const ChatPage: React.FC = () => {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                disabled={isStreaming}
-                placeholder={isListening ? 'Listening… speak now 🎙️' : "Ask Dr. Pedia about your child's health..."}
+                disabled={isStreaming || dailyUsed >= DAILY_LIMIT}
+                placeholder={
+                  dailyUsed >= DAILY_LIMIT
+                    ? `Daily limit reached — resets at midnight 🌙`
+                    : isListening ? 'Listening… speak now 🎙️'
+                    : "Ask Dr. Pedia about your child's health..."
+                }
                 rows={1}
                 className={`w-full border rounded-2xl px-4 py-3 pr-4 text-sm resize-none focus:outline-none focus:ring-2 focus:border-transparent disabled:text-gray-400 transition-all ${
                   isListening
@@ -259,7 +307,7 @@ const ChatPage: React.FC = () => {
             </button>
             <button
               onClick={sendMessage}
-              disabled={!input.trim() || isStreaming}
+              disabled={!input.trim() || isStreaming || dailyUsed >= DAILY_LIMIT}
               className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex-shrink-0 shadow-md hover:shadow-lg"
             >
               <FaPaperPlane className="text-sm ml-0.5" />

@@ -8,6 +8,8 @@ export interface IUser extends Document {
   isActive: boolean;
   role: string;
   createdAt: Date;
+  dailyMessageCount: number;
+  dailyMessageDate: Date;
 }
 
 const UserSchema = new Schema<IUser>({
@@ -18,6 +20,8 @@ const UserSchema = new Schema<IUser>({
   isActive: { type: Boolean, default: true },
   role: { type: String, default: 'parent' },
   createdAt: { type: Date, default: Date.now },
+  dailyMessageCount: { type: Number, default: 0 },
+  dailyMessageDate: { type: Date, default: () => new Date() },
 });
 
 export default mongoose.model<IUser>('User', UserSchema);
